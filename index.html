@@ -55,6 +55,48 @@
 
   .container { padding: 14px; max-width: 480px; margin: 0 auto; }
 
+  /* ③ バックアップ促しバナー */
+  .backup-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(240, 192, 64, 0.10);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 14px;
+  }
+  .backup-banner-text { flex: 1; font-size: 12px; color: var(--text); line-height: 1.5; }
+  .backup-banner-close {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
+  }
+
+  /* ⑧ 今月度に戻るボタン */
+  .back-current-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 6px 16px;
+    font-size: 12px;
+    font-family: 'Noto Sans JP', sans-serif;
+    cursor: pointer;
+  }
+
+  /* ⑥ 最高売上バッジ */
+  .top-badge {
+    display: inline-block;
+    font-size: 10px;
+    color: var(--accent);
+    background: rgba(240, 192, 64, 0.15);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+
   /* タブ */
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
   .tab {
@@ -423,6 +465,12 @@
     <button class="tab"        id="tabAnnual" onclick="switchTab('annual')">年間</button>
   </div>
 
+  <!-- ③ バックアップ促しバナー -->
+  <div id="backupBanner" class="backup-banner" style="display:none">
+    <span id="backupBannerText" class="backup-banner-text"></span>
+    <button class="backup-banner-close" onclick="dismissBackupBanner()">×</button>
+  </div>
+
   <!-- 月度ビュー -->
   <div id="viewMonth">
     <div class="month-selector">
@@ -432,6 +480,9 @@
         <div class="month-period" id="monthPeriod"></div>
       </div>
       <button class="month-nav" onclick="changeMonth(1)">›</button>
+    </div>
+    <div id="backToCurrentWrap" style="display:none; text-align:center; margin-bottom:12px;">
+      <button class="back-current-btn" onclick="goToCurrentMonth()">↩ 今月度に戻る</button>
     </div>
 
     <div class="total-card">
@@ -445,6 +496,10 @@
       <div class="total-avg">
         <span class="total-avg-label">1出番平均（税込）</span>
         <span class="total-avg-val" id="avgSales">¥0</span>
+      </div>
+      <div class="total-avg">
+        <span class="total-avg-label">1出番平均（支給額）</span>
+        <span class="total-avg-val" id="avgPay">¥0</span>
       </div>
     </div>
 
@@ -583,7 +638,13 @@
   function loadData() {
     try { data = JSON.parse(localStorage.getItem('taxiSalaryData') || '{}'); } catch(e) { data = {}; }
   }
-  function saveData() { localStorage.setItem('taxiSalaryData', JSON.stringify(data)); }
+  function saveData() {
+    try {
+      localStorage.setItem('taxiSalaryData', JSON.stringify(data));
+    } catch (e) {
+      alert('⚠️ データの保存に失敗しました。\n端末の空き容量をご確認のうえ、念のため「CSVファイルを書き出す」でバックアップしてください。');
+    }
+  }
 
   function init() {
     const fm = currentFiscalMonth();
@@ -592,6 +653,7 @@
     loadData();
     dateInput.value = todayStr();
     renderMonth();
+    updateBackupBanner();
   }
 
   function switchTab(tab) {
@@ -606,6 +668,13 @@
     curMonth += delta;
     if (curMonth > 12) { curMonth = 1;  curYear++; }
     if (curMonth < 1)  { curMonth = 12; curYear--; }
+    renderMonth();
+  }
+
+  // ⑧ 今月度に戻る
+  function goToCurrentMonth() {
+    const fm = currentFiscalMonth();
+    curYear = fm.year; curMonth = fm.month;
     renderMonth();
   }
 
@@ -629,6 +698,10 @@
       (isCur ? ' <span class="badge">今月度</span>' : '');
     document.getElementById('monthPeriod').textContent = periodLabel(curYear, curMonth);
 
+    // ⑧ 今月度以外を見ている時だけ「今月度に戻る」を表示
+    const backWrap = document.getElementById('backToCurrentWrap');
+    if (backWrap) backWrap.style.display = isCur ? 'none' : 'block';
+
     const tSales  = entries.reduce((s, e) => s + salesOf(e), 0);
     const tTaxEx  = entries.reduce((s, e) => s + taxExcl(salesOf(e)), 0);
     const tPay    = entries.reduce((s, e) => s + calcPay(salesOf(e)), 0);
@@ -639,20 +712,28 @@
     document.getElementById('countBadge').textContent   = entries.length + '出番';
     document.getElementById('avgSales').textContent     =
       entries.length > 0 ? '¥' + fmt(tSales / entries.length) : '¥0';
+    // ⑦ 支給額の1出番平均
+    document.getElementById('avgPay').textContent       =
+      entries.length > 0 ? '¥' + fmt(tPay / entries.length) : '¥0';
 
     const list = document.getElementById('entryList');
     if (entries.length === 0) {
       list.innerHTML = '<div class="empty-state">この月度の売上はありません</div>';
       return;
     }
+    // ⑥ その月度の最高売上額（同額があれば最初の1件だけにバッジ）
+    const maxSales = Math.max(...entries.map(e => salesOf(e)));
+    let topBadgeUsed = false;
     list.innerHTML = entries.map((e, i) => {
       const v = salesOf(e);
       const d = fmtDate(dateOf(e));
+      let topBadge = '';
+      if (v === maxSales && !topBadgeUsed) { topBadge = ' <span class="top-badge">🏆 最高</span>'; topBadgeUsed = true; }
       return `
         <div class="entry" onclick="openEditModal('${k}',${i})">
           <div class="entry-num">${d || (i+1)+'出番'}</div>
           <div class="entry-body">
-            <div class="entry-sales">税込 ¥${fmt(v)}</div>
+            <div class="entry-sales">税込 ¥${fmt(v)}${topBadge}</div>
             <div class="entry-pay">支給額 ¥${fmt(calcPay(v))}</div>
             <div class="entry-detail">税抜 ¥${fmt(taxExcl(v))}</div>
           </div>
@@ -676,13 +757,23 @@
     const d = dateInput.value;
     if (!v || v <= 0) { salesInput.focus(); return; }
     if (!d) { dateInput.focus(); return; }
-    const k = key(curYear, curMonth);
+
+    // ① 日付から月度を判定（表示中の月度ではなく日付ベース。取込・編集と揃える）
+    const fm = fiscalOfDate(d);
+    const k = key(fm.year, fm.month);
     if (!data[k]) data[k] = [];
+
+    // ⑤ 重複チェック：同じ日付＋同じ金額があれば登録しない
+    const dup = data[k].find(e => dateOf(e) === d && salesOf(e) === v);
+    if (dup) { alert('同じ日付・同じ金額のデータが既に登録されています'); return; }
+
     data[k].push({ date: d, sales: v });
     // 日付順にソート
     data[k].sort((a, b) => a.date.localeCompare(b.date));
     saveData();
     salesInput.value = '';
+    // 登録先が表示中の月度と違えば、その月度へ移動
+    if (k !== key(curYear, curMonth)) { curYear = fm.year; curMonth = fm.month; }
     salesInput.focus();
     renderMonth();
   }
@@ -908,7 +999,10 @@
 
     // ボタンのハンドラを設定
     document.getElementById('importAppendBtn').onclick = () => doImport(newData, 'append');
-    overwriteBtn.onclick = () => doImport(newData, 'overwrite');
+    overwriteBtn.onclick = () => {
+      if (!confirm('既存の ' + existingCount + ' 件をすべて削除して、読み込んだデータで置き換えます。\n本当によろしいですか？')) return;
+      doImport(newData, 'overwrite');
+    };
     document.getElementById('importCancelBtn').onclick = () => { dialog.style.display = 'none'; };
 
     dialog.style.display = 'flex';
@@ -1025,6 +1119,48 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 200);
+
+    // ③ 最後にエクスポートした日時を記録し、バナーを更新
+    try { localStorage.setItem('taxiLastExport', String(Date.now())); } catch (e) {}
+    updateBackupBanner();
+  }
+
+  // ③ バックアップ促しバナー
+  function daysSinceExport() {
+    const last = localStorage.getItem('taxiLastExport');
+    if (!last) return null; // 一度も書き出していない
+    return Math.floor((Date.now() - Number(last)) / (1000 * 60 * 60 * 24));
+  }
+
+  function totalEntryCount() {
+    let n = 0;
+    for (const k in data) n += data[k].length;
+    return n;
+  }
+
+  function updateBackupBanner() {
+    const banner = document.getElementById('backupBanner');
+    if (!banner) return;
+    const days = daysSinceExport();
+    let msg = '';
+    if (totalEntryCount() > 0) {
+      if (days === null) {
+        msg = '📤 まだ一度もバックアップしていません。「CSVファイルを書き出す」で保存をおすすめします';
+      } else if (days >= 7) {
+        msg = '📤 前回のバックアップから ' + days + '日 経っています。「CSVファイルを書き出す」で保存をおすすめします';
+      }
+    }
+    if (msg) {
+      document.getElementById('backupBannerText').textContent = msg;
+      banner.style.display = 'flex';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  function dismissBackupBanner() {
+    const banner = document.getElementById('backupBanner');
+    if (banner) banner.style.display = 'none';
   }
 
   init();
