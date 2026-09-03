@@ -1,5 +1,5 @@
 // タクシー給料計算 Service Worker
-const CACHE_NAME = 'taxi-salary-v3';
+const CACHE_NAME = 'taxi-salary-v4';
 const ASSETS = [
   './',
   './index.html',

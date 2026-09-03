@@ -494,7 +494,7 @@
         <span id="countBadge">0出番</span>
       </div>
       <div class="total-avg">
-        <span class="total-avg-label">1出番平均（税込）</span>
+        <span class="total-avg-label">1出番平均（税抜）</span>
         <span class="total-avg-val" id="avgSales">¥0</span>
       </div>
       <div class="total-avg">
@@ -532,7 +532,7 @@
       <div class="annual-summary-label">年間 概算総支給額</div>
       <div class="annual-summary-amount"><span class="yen">¥</span><span id="annualTotalPay">0</span></div>
       <div class="annual-summary-sub">
-        <span>税込売上 <strong id="annualTotalSales">¥0</strong></span>
+        <span>税抜売上 <strong id="annualTotalSales">¥0</strong></span>
         <span>総出番数 <strong id="annualTotalCount">0出番</strong></span>
       </div>
     </div>
@@ -711,7 +711,7 @@
     document.getElementById('totalTaxExcl').textContent = '¥' + fmt(tTaxEx);
     document.getElementById('countBadge').textContent   = entries.length + '出番';
     document.getElementById('avgSales').textContent     =
-      entries.length > 0 ? '¥' + fmt(tSales / entries.length) : '¥0';
+      entries.length > 0 ? '¥' + fmt(tTaxEx / entries.length) : '¥0';
     // ⑦ 支給額の1出番平均
     document.getElementById('avgPay').textContent       =
       entries.length > 0 ? '¥' + fmt(tPay / entries.length) : '¥0';
@@ -872,15 +872,17 @@
   function renderAnnual() {
     document.getElementById('yearDisplay').textContent = annualYear + '年';
     const fm = currentFiscalMonth();
-    let aPay = 0, aSales = 0, aCount = 0, rows = '';
+    let aPay = 0, aSales = 0, aTaxEx = 0, aCount = 0, rows = '';
 
     for (let m = 1; m <= 12; m++) {
       const k = key(annualYear, m);
       const entries = data[k] || [];
       const tSales = entries.reduce((s, e) => s + salesOf(e), 0);
+      const tTaxEx = entries.reduce((s, e) => s + taxExcl(salesOf(e)), 0);
       const tPay   = entries.reduce((s, e) => s + calcPay(salesOf(e)), 0);
       aPay   += tPay;
       aSales += tSales;
+      aTaxEx += tTaxEx;
       aCount += entries.length;
       const isCur = annualYear === fm.year && m === fm.month;
       rows += `
@@ -893,7 +895,7 @@
     }
 
     document.getElementById('annualTotalPay').textContent   = fmt(aPay);
-    document.getElementById('annualTotalSales').textContent = '¥' + fmt(aSales);
+    document.getElementById('annualTotalSales').textContent = '¥' + fmt(aTaxEx);
     document.getElementById('annualTotalCount').textContent = aCount + '出番';
     document.getElementById('annualList').innerHTML = '<div class="annual-card">' + rows + '</div>';
   }
